@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<session version="1.0">
+<refactoring comment="Delete 3 resources" deleteContents="false" description="Delete 3 resources" element1="/VIBNET_SENSOR_Appli" element2="/VIBNET_SENSOR" element3="/VIBNET_SENSOR_FSBL" flags="7" id="org.eclipse.ltk.core.refactoring.delete.resources" resources="3" stamp="1791341159998"/>
+</session>
