@@ -27,6 +27,8 @@
 #include "power_monitor.h"
 #include "rs485.h"
 #include "display_protocol.h"
+#include <stdio.h>
+#include <string.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -36,7 +38,9 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#define CONSOLE_REPORT_INTERVAL_MS  1000U
+#define CONSOLE_RS485_TEST_PEER_ID  2U
+#define CONSOLE_TX_TIMEOUT_MS       100U
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -62,7 +66,8 @@ UART_HandleTypeDef huart2;
 UART_HandleTypeDef huart6;
 
 /* USER CODE BEGIN PV */
-
+static uint32_t console_last_report_ms;
+static uint8_t console_rx_byte;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -80,12 +85,37 @@ static void MX_RTC_Init(void);
 static void MX_TIM6_Init(void);
 static void MX_UART5_Init(void);
 /* USER CODE BEGIN PFP */
-
+static void Console_Init(void);
+static void Console_Process(void);
+static void Console_PrintStatus(void);
+static void Console_RunRS485SelfTest(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+static int32_t Console_ToMilli(float value)
+{
+  float scaled = value * 1000.0f;
 
+  if (scaled >= 2147483647.0f)
+  {
+    return INT32_MAX;
+  }
+  if (scaled <= -2147483648.0f)
+  {
+    return INT32_MIN;
+  }
+  return (int32_t)scaled;
+}
+
+static void Console_Write(const char *text)
+{
+  if (text != NULL)
+  {
+    (void)HAL_UART_Transmit(&huart6, (const uint8_t *)text,
+                            (uint16_t)strlen(text), CONSOLE_TX_TIMEOUT_MS);
+  }
+}
 /* USER CODE END 0 */
 
 /**
@@ -139,6 +169,7 @@ int main(void)
   RS485_Init();
   PowerMonitor_Init();
   DisplayProtocol_Init();
+  Console_Init();
 
   /* USER CODE END 2 */
 
@@ -152,6 +183,7 @@ int main(void)
 
     PowerMonitor_Update();
     DisplayProtocol_Process();
+    Console_Process();
 
   }
   /* USER CODE END 3 */
@@ -844,6 +876,177 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+static void Console_PrintSignedMilli(char *buffer, size_t capacity,
+                                     const char *name, int32_t milli,
+                                     const char *unit)
+{
+  uint32_t magnitude;
+
+  if ((buffer == NULL) || (capacity == 0U))
+  {
+    return;
+  }
+
+  magnitude = (milli < 0) ? (uint32_t)(-(int64_t)milli) : (uint32_t)milli;
+  (void)snprintf(buffer, capacity, "%s=%s%lu.%03lu%s",
+                 name, (milli < 0) ? "-" : "",
+                 (unsigned long)(magnitude / 1000U),
+                 (unsigned long)(magnitude % 1000U), unit);
+}
+
+static void Console_PrintStatus(void)
+{
+  const PowerMonitor_Data_t *power = PowerMonitor_GetData();
+  const DisplayProtocol_Status_t *protocol = DisplayProtocol_GetStatus();
+  char line[384];
+  char voltage[32];
+  char current[32];
+  char auxiliary[32];
+  char power_text[32];
+  char frequency[32];
+  int length;
+
+  Console_PrintSignedMilli(voltage, sizeof(voltage), "V",
+                           Console_ToMilli(power->voltage_rms), "V");
+  Console_PrintSignedMilli(current, sizeof(current), "I",
+                           Console_ToMilli(power->current_rms), "A");
+  Console_PrintSignedMilli(auxiliary, sizeof(auxiliary), "MCS",
+                           Console_ToMilli(power->auxiliary_current), "A");
+  Console_PrintSignedMilli(power_text, sizeof(power_text), "P",
+                           Console_ToMilli(power->active_power), "W");
+  Console_PrintSignedMilli(frequency, sizeof(frequency), "F",
+                           Console_ToMilli(power->frequency), "Hz");
+
+  length = snprintf(line, sizeof(line),
+      "[STATUS %lums] BL0942=%s %s %s %s %s ok=%lu fail=%lu | "
+      "%s | RS485 id=%u rx=%lu tx=%lu rsp=%lu last=0x%02X err=%lu\r\n",
+      (unsigned long)HAL_GetTick(), power->meter_valid ? "OK" : "FAIL",
+      voltage, current, power_text, frequency,
+      (unsigned long)power->successful_updates,
+      (unsigned long)power->failed_updates, auxiliary,
+      (unsigned int)RS485_GetLocalId(),
+      (unsigned long)protocol->received_packets,
+      (unsigned long)protocol->transmitted_packets,
+      (unsigned long)protocol->received_responses,
+      (unsigned int)protocol->last_response_command,
+      (unsigned long)protocol->protocol_errors);
+  if (length > 0)
+  {
+    Console_Write(line);
+  }
+}
+
+static void Console_RunRS485SelfTest(void)
+{
+  RS485_Packet_t source;
+  RS485_Packet_t decoded;
+  uint8_t frame[RS485_MAX_FRAME_SIZE];
+  size_t frame_length;
+  bool passed;
+
+  memset(&source, 0, sizeof(source));
+  memset(&decoded, 0, sizeof(decoded));
+  source.destination_id = RS485_GetLocalId();
+  source.source_id = 0x22U;
+  source.command = 0x55U;
+  source.data_length = 4U;
+  source.data[0] = 0x12U;
+  source.data[1] = 0x34U;
+  source.data[2] = 0x56U;
+  source.data[3] = 0x78U;
+
+  frame_length = RS485_EncodeFrame(&source, frame, sizeof(frame));
+  passed = (frame_length > 0U) &&
+           (RS485_DecodeFrame(frame, frame_length, &decoded) == RS485_FRAME_OK) &&
+           (decoded.destination_id == source.destination_id) &&
+           (decoded.source_id == source.source_id) &&
+           (decoded.command == source.command) &&
+           (decoded.data_length == source.data_length) &&
+           (memcmp(decoded.data, source.data, source.data_length) == 0);
+
+  Console_Write(passed ?
+      "[RS485] frame/CRC software self-test: PASS\r\n" :
+      "[RS485] frame/CRC software self-test: FAIL\r\n");
+}
+
+static void Console_Init(void)
+{
+  console_last_report_ms = HAL_GetTick();
+  Console_Write("\r\nSMART_EDB_BOARD diagnostic console\r\n"
+                "UART6: 115200 baud, 8-N-1\r\n"
+                "Commands: h=help, s=status, m=measure now, "
+                "t=RS485 self-test, p=ping node 2, 1/2=set local ID\r\n"
+                "RS485 physical test requires a powered peer and correct A/B/GND wiring.\r\n");
+  Console_RunRS485SelfTest();
+}
+
+static void Console_Process(void)
+{
+  uint32_t now = HAL_GetTick();
+
+  if ((uint32_t)(now - console_last_report_ms) >= CONSOLE_REPORT_INTERVAL_MS)
+  {
+    console_last_report_ms = now;
+    Console_PrintStatus();
+  }
+
+  if (HAL_UART_Receive(&huart6, &console_rx_byte, 1U, 0U) != HAL_OK)
+  {
+    return;
+  }
+
+  switch (console_rx_byte)
+  {
+    case 's':
+    case 'S':
+      Console_PrintStatus();
+      break;
+
+    case 'm':
+    case 'M':
+      Console_Write(PowerMonitor_ForceUpdate() ?
+                    "[MEASURE] update: OK\r\n" :
+                    "[MEASURE] update: FAIL\r\n");
+      Console_PrintStatus();
+      break;
+
+    case 't':
+    case 'T':
+      Console_RunRS485SelfTest();
+      break;
+
+    case 'p':
+    case 'P':
+      Console_Write(DisplayProtocol_SendPing(CONSOLE_RS485_TEST_PEER_ID) == HAL_OK ?
+                    "[RS485] ping sent to node 2; check rsp counter.\r\n" :
+                    "[RS485] ping transmit failed.\r\n");
+      break;
+
+    case '1':
+      RS485_SetLocalId(1U);
+      Console_Write("[RS485] local node ID set to 1.\r\n");
+      break;
+
+    case '2':
+      RS485_SetLocalId(2U);
+      Console_Write("[RS485] local node ID set to 2.\r\n");
+      break;
+
+    case 'h':
+    case 'H':
+      Console_Write("Commands: h=help, s=status, m=measure now, "
+                    "t=RS485 self-test, p=ping node 2, 1/2=set local ID\r\n");
+      break;
+
+    case '\r':
+    case '\n':
+      break;
+
+    default:
+      Console_Write("Unknown command. Press h for help.\r\n");
+      break;
+  }
+}
 
 /* USER CODE END 4 */
 

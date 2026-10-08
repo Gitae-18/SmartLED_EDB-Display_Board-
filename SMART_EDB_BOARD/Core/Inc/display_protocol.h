@@ -33,7 +33,9 @@ typedef struct
 {
     uint32_t received_packets;
     uint32_t transmitted_packets;
+    uint32_t received_responses;
     uint32_t protocol_errors;
+    uint8_t last_response_command;
     bool ac_output_enabled;
 } DisplayProtocol_Status_t;
 
@@ -55,6 +57,7 @@ void DisplayProtocol_Init(void);
 void DisplayProtocol_Process(void);
 
 HAL_StatusTypeDef DisplayProtocol_SendMeasurements(uint8_t destination_id);
+HAL_StatusTypeDef DisplayProtocol_SendPing(uint8_t destination_id);
 const DisplayProtocol_Status_t *DisplayProtocol_GetStatus(void);
 
 #ifdef __cplusplus

@@ -116,6 +116,15 @@ HAL_StatusTypeDef DisplayProtocol_SendMeasurements(uint8_t destination_id)
         payload, sizeof(payload));
 }
 
+HAL_StatusTypeDef DisplayProtocol_SendPing(uint8_t destination_id)
+{
+    uint8_t payload[4];
+
+    DisplayProtocol_PutU32(payload, HAL_GetTick());
+    return DisplayProtocol_SendPacket(destination_id, DISPLAY_CMD_PING,
+                                      payload, sizeof(payload));
+}
+
 const DisplayProtocol_Status_t *DisplayProtocol_GetStatus(void)
 {
     return &display_status;
@@ -137,6 +146,14 @@ void DisplayProtocol_Process(void)
 
     ++display_status.received_packets;
     send_response = (request.destination_id != RS485_BROADCAST_ID);
+
+    /* Responses are terminal packets. Do not answer them again. */
+    if ((request.command & DISPLAY_CMD_RESPONSE_FLAG) != 0U)
+    {
+        ++display_status.received_responses;
+        display_status.last_response_command = request.command;
+        return;
+    }
 
     switch (request.command)
     {
