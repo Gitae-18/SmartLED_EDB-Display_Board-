@@ -843,8 +843,10 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(TEST_LED_GPIO_Port, TEST_LED_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, RX_ENABLE_Pin|AC_Ctrl_Pin|RUN_LED_Pin|RS485_DE_Pin
-                          |GPIO_PIN_12, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, RX_ENABLE_Pin|RUN_LED_Pin|RS485_DE_Pin|GPIO_PIN_12, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(AC_Ctrl_GPIO_Port, AC_Ctrl_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin : TEST_LED_Pin */
   GPIO_InitStruct.Pin = TEST_LED_Pin;

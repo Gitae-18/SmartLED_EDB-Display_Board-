@@ -12,7 +12,7 @@
 #define BL0942_UART_TIMEOUT_MS     30U
 #define BL0942_DEVICE_ADDRESS      0U
 
-extern UART_HandleTypeDef huart1;
+extern UART_HandleTypeDef huart2;
 
 static BL0942_Diagnostics_t diagnostics;
 
@@ -94,10 +94,10 @@ bool BL0942_ReadRegister(uint8_t reg, uint32_t *value)
 
     request[0] = (uint8_t)(BL0942_READ_COMMAND | BL0942_DEVICE_ADDRESS);
     request[1] = reg;
-    status = HAL_UART_Transmit(&huart1, request, sizeof(request),
+    status = HAL_UART_Transmit(&huart2, request, sizeof(request),
                                BL0942_UART_TIMEOUT_MS);
     diagnostics.hal_status = status;
-    diagnostics.uart_error = HAL_UART_GetError(&huart1);
+    diagnostics.uart_error = HAL_UART_GetError(&huart2);
     if (status != HAL_OK)
     {
         diagnostics.last_result = (status == HAL_TIMEOUT) ?
@@ -105,14 +105,14 @@ bool BL0942_ReadRegister(uint8_t reg, uint32_t *value)
         ++diagnostics.tx_failures;
         return false;
     }
-    status = HAL_UART_Receive(&huart1, response, sizeof(response),
+    status = HAL_UART_Receive(&huart2, response, sizeof(response),
                               BL0942_UART_TIMEOUT_MS);
     diagnostics.hal_status = status;
-    diagnostics.uart_error = HAL_UART_GetError(&huart1);
+    diagnostics.uart_error = HAL_UART_GetError(&huart2);
     /* HAL_BUSY does not initialize RxXferCount for this request. */
     if (status != HAL_BUSY)
     {
-        diagnostics.received_bytes = (uint8_t)(sizeof(response) - huart1.RxXferCount);
+        diagnostics.received_bytes = (uint8_t)(sizeof(response) - huart2.RxXferCount);
     }
     memcpy(diagnostics.response, response, sizeof(response));
     if (status != HAL_OK)
@@ -163,7 +163,7 @@ bool BL0942_WriteRegister(uint8_t reg, uint32_t value)
     frame[4] = (uint8_t)(value >> 16U);
     frame[5] = BL0942_Checksum(frame, 5U);
 
-    return HAL_UART_Transmit(&huart1, frame, sizeof(frame),
+    return HAL_UART_Transmit(&huart2, frame, sizeof(frame),
                              BL0942_UART_TIMEOUT_MS) == HAL_OK;
 }
 

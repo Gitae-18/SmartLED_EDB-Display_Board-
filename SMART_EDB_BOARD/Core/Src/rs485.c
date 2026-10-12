@@ -3,7 +3,7 @@
 
 #define RS485_UART_TIMEOUT_MS  100U
 
-extern UART_HandleTypeDef huart2;
+extern UART_HandleTypeDef huart5;
 
 static uint8_t rs485_local_id = 1U;
 
@@ -51,8 +51,8 @@ HAL_StatusTypeDef RS485_Send(const uint8_t *data, uint16_t len)
     }
 
     RS485_SetTxMode();
-    status = HAL_UART_Transmit(&huart2, data, len, RS485_UART_TIMEOUT_MS);
-    while ((status == HAL_OK) && (__HAL_UART_GET_FLAG(&huart2, UART_FLAG_TC) == 0U))
+    status = HAL_UART_Transmit(&huart5, data, len, RS485_UART_TIMEOUT_MS);
+    while ((status == HAL_OK) && (__HAL_UART_GET_FLAG(&huart5, UART_FLAG_TC) == 0U))
     {
     }
     RS485_SetRxMode();
@@ -67,7 +67,7 @@ HAL_StatusTypeDef RS485_Receive(uint8_t *data, uint16_t len, uint32_t timeout)
     }
 
     RS485_SetRxMode();
-    return HAL_UART_Receive(&huart2, data, len, timeout);
+    return HAL_UART_Receive(&huart5, data, len, timeout);
 }
 
 uint16_t RS485_CRC16(const uint8_t *data, size_t len)
