@@ -51,7 +51,8 @@ typedef struct
  *   u8  meter_valid
  */
 #define DISPLAY_PROTOCOL_MEASUREMENT_PAYLOAD_SIZE  29U
-#define DISPLAY_PROTOCOL_RECEIVE_TIMEOUT_MS         1U
+#define DISPLAY_PROTOCOL_FIRST_BYTE_TIMEOUT_MS      1U
+#define DISPLAY_PROTOCOL_FRAME_TIMEOUT_MS          10U
 
 void DisplayProtocol_Init(void);
 void DisplayProtocol_Process(void);

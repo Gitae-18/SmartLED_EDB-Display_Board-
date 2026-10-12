@@ -137,8 +137,10 @@ void DisplayProtocol_Process(void)
     uint8_t payload[10];
     bool send_response;
 
-    receive_status = RS485_ReceivePacket(&request,
-                                         DISPLAY_PROTOCOL_RECEIVE_TIMEOUT_MS);
+    receive_status = RS485_ReceivePacket(
+        &request,
+        DISPLAY_PROTOCOL_FIRST_BYTE_TIMEOUT_MS,
+        DISPLAY_PROTOCOL_FRAME_TIMEOUT_MS);
     if (receive_status != RS485_FRAME_OK)
     {
         return;

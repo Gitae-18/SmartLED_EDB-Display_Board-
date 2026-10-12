@@ -188,12 +188,15 @@ HAL_StatusTypeDef RS485_SendPacket(const RS485_Packet_t *packet)
     return RS485_Send(frame, (uint16_t)length);
 }
 
-RS485_FrameStatus_t RS485_ReceivePacket(RS485_Packet_t *packet, uint32_t timeout)
+RS485_FrameStatus_t RS485_ReceivePacket(RS485_Packet_t *packet,
+                                        uint32_t first_byte_timeout,
+                                        uint32_t frame_timeout)
 {
     uint8_t frame[RS485_MAX_FRAME_SIZE];
     uint8_t byte;
     uint8_t body_len;
-    uint32_t start = HAL_GetTick();
+    uint32_t first_byte_start = HAL_GetTick();
+    uint32_t frame_start;
     uint32_t remaining;
     size_t tail_len;
 
@@ -204,7 +207,7 @@ RS485_FrameStatus_t RS485_ReceivePacket(RS485_Packet_t *packet, uint32_t timeout
 
     do
     {
-        remaining = RS485_RemainingTimeout(start, timeout);
+        remaining = RS485_RemainingTimeout(first_byte_start, first_byte_timeout);
         if (remaining == 0U)
         {
             return RS485_FRAME_INCOMPLETE;
@@ -213,10 +216,12 @@ RS485_FrameStatus_t RS485_ReceivePacket(RS485_Packet_t *packet, uint32_t timeout
         {
             return RS485_FRAME_INCOMPLETE;
         }
-    } while ((byte != RS485_STX) && ((HAL_GetTick() - start) < timeout));
+    } while ((byte != RS485_STX) &&
+             ((HAL_GetTick() - first_byte_start) < first_byte_timeout));
 
     frame[0] = byte;
-    remaining = RS485_RemainingTimeout(start, timeout);
+    frame_start = HAL_GetTick();
+    remaining = RS485_RemainingTimeout(frame_start, frame_timeout);
     if (remaining == 0U)
     {
         return RS485_FRAME_INCOMPLETE;
@@ -232,7 +237,7 @@ RS485_FrameStatus_t RS485_ReceivePacket(RS485_Packet_t *packet, uint32_t timeout
     }
 
     tail_len = (size_t)body_len + 3U;
-    remaining = RS485_RemainingTimeout(start, timeout);
+    remaining = RS485_RemainingTimeout(frame_start, frame_timeout);
     if (remaining == 0U)
     {
         return RS485_FRAME_INCOMPLETE;

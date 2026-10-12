@@ -59,7 +59,9 @@ size_t RS485_EncodeFrame(const RS485_Packet_t *packet, uint8_t *frame, size_t ca
 RS485_FrameStatus_t RS485_DecodeFrame(const uint8_t *frame, size_t frame_len,
                                       RS485_Packet_t *packet);
 HAL_StatusTypeDef RS485_SendPacket(const RS485_Packet_t *packet);
-RS485_FrameStatus_t RS485_ReceivePacket(RS485_Packet_t *packet, uint32_t timeout);
+RS485_FrameStatus_t RS485_ReceivePacket(RS485_Packet_t *packet,
+                                        uint32_t first_byte_timeout,
+                                        uint32_t frame_timeout);
 
 #ifdef __cplusplus
 }
