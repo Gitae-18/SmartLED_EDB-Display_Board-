@@ -898,6 +898,7 @@ static void Console_PrintStatus(void)
 {
   const PowerMonitor_Data_t *power = PowerMonitor_GetData();
   const DisplayProtocol_Status_t *protocol = DisplayProtocol_GetStatus();
+  const BL0942_Diagnostics_t *meter = BL0942_GetDiagnostics();
   char line[384];
   char voltage[32];
   char current[32];
@@ -930,6 +931,23 @@ static void Console_PrintStatus(void)
       (unsigned long)protocol->received_responses,
       (unsigned int)protocol->last_response_command,
       (unsigned long)protocol->protocol_errors);
+  if (length > 0)
+  {
+    Console_Write(line);
+  }
+
+  length = snprintf(line, sizeof(line),
+      "[BL0942] last=%s reg=0x%02X hal=%u uart_err=0x%lX "
+      "tx_fail=%lu rx_timeout=%lu rx_err=%lu checksum_err=%lu "
+      "rx=%u/4 raw=%02X %02X %02X %02X cs_expected=%02X cs_received=%02X\r\n",
+      BL0942_ResultName(meter->last_result), (unsigned int)meter->reg,
+      (unsigned int)meter->hal_status, (unsigned long)meter->uart_error,
+      (unsigned long)meter->tx_failures, (unsigned long)meter->rx_timeouts,
+      (unsigned long)meter->rx_errors, (unsigned long)meter->checksum_errors,
+      (unsigned int)meter->received_bytes,
+      (unsigned int)meter->response[0], (unsigned int)meter->response[1],
+      (unsigned int)meter->response[2], (unsigned int)meter->response[3],
+      (unsigned int)meter->checksum_expected, (unsigned int)meter->checksum_received);
   if (length > 0)
   {
     Console_Write(line);

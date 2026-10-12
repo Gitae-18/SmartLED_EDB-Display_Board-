@@ -33,6 +33,38 @@ typedef struct
     float frequency;
 } BL0942_Data_t;
 
+typedef enum
+{
+    BL0942_RESULT_NONE = 0,
+    BL0942_RESULT_OK,
+    BL0942_RESULT_TX_TIMEOUT,
+    BL0942_RESULT_TX_ERROR,
+    BL0942_RESULT_RX_TIMEOUT,
+    BL0942_RESULT_RX_ERROR,
+    BL0942_RESULT_CHECKSUM,
+    BL0942_RESULT_INVALID_ARGUMENT,
+    BL0942_RESULT_INVALID_FREQUENCY
+} BL0942_Result_t;
+
+typedef struct
+{
+    BL0942_Result_t last_result;
+    HAL_StatusTypeDef hal_status;
+    uint32_t uart_error;
+    uint32_t tx_failures;
+    uint32_t rx_timeouts;
+    uint32_t rx_errors;
+    uint32_t checksum_errors;
+    uint8_t reg;
+    uint8_t received_bytes;
+    uint8_t response[4];
+    uint8_t checksum_expected;
+    uint8_t checksum_received;
+} BL0942_Diagnostics_t;
+
+const BL0942_Diagnostics_t *BL0942_GetDiagnostics(void);
+const char *BL0942_ResultName(BL0942_Result_t result);
+
 bool BL0942_Init(void);
 bool BL0942_ReadRegister(uint8_t reg, uint32_t *value);
 bool BL0942_WriteRegister(uint8_t reg, uint32_t value);
