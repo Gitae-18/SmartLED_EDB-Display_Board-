@@ -1,5 +1,6 @@
 #include "power_monitor.h"
 
+#include "adc_ctrl.h"
 #include "bl0942.h"
 #include "main.h"
 #include "mcs1806.h"
@@ -28,6 +29,10 @@ bool PowerMonitor_ForceUpdate(void)
 
     /* The auxiliary current sensor is independent of the BL0942. */
     power_monitor_data.auxiliary_current = MCS1806_ReadCurrent();
+    power_monitor_data.dc_voltage_valid = ADC_CTRL_ReadDCVoltage(
+        &power_monitor_data.dc_voltage, 10U);
+    power_monitor_data.ntc_valid = ADC_CTRL_ReadNTC(
+        &power_monitor_data.ntc_raw, &power_monitor_data.ntc_voltage, 10U);
 
     if (!BL0942_ReadAll(&meter_data))
     {

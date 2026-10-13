@@ -8,6 +8,12 @@
 
 static DisplayProtocol_Status_t display_status;
 
+static void DisplayProtocol_PutU16(uint8_t *buffer, uint16_t value)
+{
+    buffer[0] = (uint8_t)value;
+    buffer[1] = (uint8_t)(value >> 8U);
+}
+
 static void DisplayProtocol_PutU32(uint8_t *buffer, uint32_t value)
 {
     buffer[0] = (uint8_t)value;
@@ -109,6 +115,13 @@ HAL_StatusTypeDef DisplayProtocol_SendMeasurements(uint8_t destination_id)
     DisplayProtocol_PutI32(&payload[24],
         DisplayProtocol_ScaleFloat(measurement->frequency, 1000.0f));
     payload[28] = measurement->meter_valid ? 1U : 0U;
+    DisplayProtocol_PutI32(&payload[29],
+        DisplayProtocol_ScaleFloat(measurement->dc_voltage, 1000.0f));
+    payload[33] = measurement->dc_voltage_valid ? 1U : 0U;
+    DisplayProtocol_PutU16(&payload[34], measurement->ntc_raw);
+    DisplayProtocol_PutI32(&payload[36],
+        DisplayProtocol_ScaleFloat(measurement->ntc_voltage, 1000.0f));
+    payload[40] = measurement->ntc_valid ? 1U : 0U;
 
     return DisplayProtocol_SendPacket(
         destination_id,

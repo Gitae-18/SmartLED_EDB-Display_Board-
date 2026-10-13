@@ -21,10 +21,15 @@ typedef struct
     float energy;
     float frequency;
     float auxiliary_current;
+    float dc_voltage;
+    float ntc_voltage;
+    uint16_t ntc_raw;
     uint32_t updated_at_ms;
     uint32_t successful_updates;
     uint32_t failed_updates;
     bool meter_valid;
+    bool dc_voltage_valid;
+    bool ntc_valid;
 } PowerMonitor_Data_t;
 
 void PowerMonitor_Init(void);

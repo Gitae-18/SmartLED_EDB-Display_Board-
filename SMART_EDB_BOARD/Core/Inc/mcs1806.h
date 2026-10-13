@@ -8,11 +8,10 @@
 extern "C" {
 #endif
 
-#define MCS1806_SENSITIVITY   0.264f
-#define MCS1806_DEFAULT_ZERO_V  1.650f
+#define MCS1806_SENSITIVITY     0.240f
+#define MCS1806_DEFAULT_ZERO_V  1.500f
 #define MCS1806_ADC_REFERENCE_V 3.300f
-#define MCS1806_ADC_MAX_COUNT   4095.0f  /* ADC2 is configured for 12 bit */
-#define MCS1806_SAMPLE_COUNT    16U
+#define MCS1806_ADC_MAX_COUNT   4095.0f  /* ADC1 is configured for 12 bit */
 
 typedef struct
 {

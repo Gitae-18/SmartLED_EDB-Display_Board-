@@ -10,26 +10,11 @@ void MCS1806_Init(void)
 
 uint16_t MCS1806_ReadRaw(void)
 {
-    uint32_t sum = 0U;
-    uint16_t raw = 0U;
-    uint32_t valid_samples = 0U;
-    uint32_t i;
-
-    for (i = 0U; i < MCS1806_SAMPLE_COUNT; ++i)
-    {
-        if (ADC_CTRL_ReadADC2Raw(&raw, 10U))
-        {
-            sum += raw;
-            ++valid_samples;
-        }
-    }
-
-    if (valid_samples == 0U)
-    {
-        return 0U;
-    }
-
-    return (uint16_t)(sum / valid_samples);
+    /*
+     * CURRENT_ADC is connected to PA6/ADC1_INP3. ADC1 samples this input
+     * continuously into the DMA buffer; PC4/ADC2_INP4 is reserved for NTC_TEMP.
+     */
+    return ADC_CTRL_GetADC1Average();
 }
 
 float MCS1806_ReadVoltage(void)

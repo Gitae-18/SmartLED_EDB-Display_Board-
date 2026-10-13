@@ -344,13 +344,13 @@ static void MX_ADC1_Init(void)
 
   /** Configure Injected Channel
   */
-  sConfigInjected.InjectedChannel = ADC_CHANNEL_3;
+  sConfigInjected.InjectedChannel = ADC_CHANNEL_5;
   sConfigInjected.InjectedRank = ADC_INJECTED_RANK_1;
   sConfigInjected.InjectedSamplingTime = ADC_SAMPLETIME_24CYCLES_5;
   sConfigInjected.InjectedSingleDiff = ADC_SINGLE_ENDED;
   sConfigInjected.InjectedOffsetNumber = ADC_OFFSET_NONE;
   sConfigInjected.InjectedOffset = 0;
-  sConfigInjected.InjectedNbrOfConversion = 2;
+  sConfigInjected.InjectedNbrOfConversion = 1;
   sConfigInjected.InjectedDiscontinuousConvMode = DISABLE;
   sConfigInjected.AutoInjectedConv = DISABLE;
   sConfigInjected.QueueInjectedContext = DISABLE;
@@ -364,14 +364,6 @@ static void MX_ADC1_Init(void)
     Error_Handler();
   }
 
-  /** Configure Injected Channel
-  */
-  sConfigInjected.InjectedChannel = ADC_CHANNEL_5;
-  sConfigInjected.InjectedRank = ADC_INJECTED_RANK_2;
-  if (HAL_ADCEx_InjectedConfigChannel(&hadc1, &sConfigInjected) != HAL_OK)
-  {
-    Error_Handler();
-  }
   /* USER CODE BEGIN ADC1_Init 2 */
 
   /* USER CODE END ADC1_Init 2 */
@@ -905,6 +897,8 @@ static void Console_PrintStatus(void)
   char voltage[32];
   char current[32];
   char auxiliary[32];
+  char dc_voltage[32];
+  char ntc_voltage[32];
   char power_text[32];
   char frequency[32];
   int length;
@@ -915,6 +909,10 @@ static void Console_PrintStatus(void)
                            Console_ToMilli(power->current_rms), "A");
   Console_PrintSignedMilli(auxiliary, sizeof(auxiliary), "MCS",
                            Console_ToMilli(power->auxiliary_current), "A");
+  Console_PrintSignedMilli(dc_voltage, sizeof(dc_voltage), "DCV",
+                           Console_ToMilli(power->dc_voltage), "V");
+  Console_PrintSignedMilli(ntc_voltage, sizeof(ntc_voltage), "NTC",
+                           Console_ToMilli(power->ntc_voltage), "V");
   Console_PrintSignedMilli(power_text, sizeof(power_text), "P",
                            Console_ToMilli(power->active_power), "W");
   Console_PrintSignedMilli(frequency, sizeof(frequency), "F",
@@ -922,11 +920,15 @@ static void Console_PrintStatus(void)
 
   length = snprintf(line, sizeof(line),
       "[STATUS %lums] BL0942=%s %s %s %s %s ok=%lu fail=%lu | "
-      "%s | RS485 id=%u rx=%lu tx=%lu rsp=%lu last=0x%02X err=%lu\r\n",
+      "%s %s(%s) %s raw=%u(%s) | "
+      "RS485 id=%u rx=%lu tx=%lu rsp=%lu last=0x%02X err=%lu\r\n",
       (unsigned long)HAL_GetTick(), power->meter_valid ? "OK" : "FAIL",
       voltage, current, power_text, frequency,
       (unsigned long)power->successful_updates,
-      (unsigned long)power->failed_updates, auxiliary,
+      (unsigned long)power->failed_updates, auxiliary, dc_voltage,
+      power->dc_voltage_valid ? "OK" : "FAIL",
+      ntc_voltage, (unsigned int)power->ntc_raw,
+      power->ntc_valid ? "OK" : "FAIL",
       (unsigned int)RS485_GetLocalId(),
       (unsigned long)protocol->received_packets,
       (unsigned long)protocol->transmitted_packets,

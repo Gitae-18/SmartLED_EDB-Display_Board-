@@ -84,6 +84,45 @@ uint16_t ADC_CTRL_GetADC1Average(void)
     return (uint16_t)(sum / ADC_CTRL_DMA_SAMPLE_COUNT);
 }
 
+bool ADC_CTRL_ReadDCVoltageRaw(uint16_t *raw, uint32_t timeout_ms)
+{
+    HAL_StatusTypeDef status;
+
+    if (raw == NULL)
+    {
+        return false;
+    }
+
+    /* PB1/ADC1_INP5 is injected rank 1, independent of the PA6 DMA path. */
+    status = HAL_ADCEx_InjectedStart(&hadc1);
+    if (status != HAL_OK)
+    {
+        return false;
+    }
+
+    status = HAL_ADCEx_InjectedPollForConversion(&hadc1, timeout_ms);
+    if (status == HAL_OK)
+    {
+        *raw = (uint16_t)HAL_ADCEx_InjectedGetValue(
+            &hadc1, ADC_INJECTED_RANK_1);
+    }
+
+    return (status == HAL_OK);
+}
+
+bool ADC_CTRL_ReadDCVoltage(float *voltage, uint32_t timeout_ms)
+{
+    uint16_t raw;
+
+    if ((voltage == NULL) || !ADC_CTRL_ReadDCVoltageRaw(&raw, timeout_ms))
+    {
+        return false;
+    }
+
+    *voltage = ((float)raw * ADC_CTRL_DC_VOLTAGE_FULL_SCALE_V) / 4095.0f;
+    return true;
+}
+
 bool ADC_CTRL_ReadADC2Raw(uint16_t *raw, uint32_t timeout_ms)
 {
     HAL_StatusTypeDef status;
@@ -107,4 +146,19 @@ bool ADC_CTRL_ReadADC2Raw(uint16_t *raw, uint32_t timeout_ms)
 
     (void)HAL_ADC_Stop(&hadc2);
     return (status == HAL_OK);
+}
+
+bool ADC_CTRL_ReadNTC(uint16_t *raw, float *voltage, uint32_t timeout_ms)
+{
+    uint16_t sample;
+
+    if ((raw == NULL) || (voltage == NULL) ||
+        !ADC_CTRL_ReadADC2Raw(&sample, timeout_ms))
+    {
+        return false;
+    }
+
+    *raw = sample;
+    *voltage = ((float)sample * 3.3f) / 4095.0f;
+    return true;
 }

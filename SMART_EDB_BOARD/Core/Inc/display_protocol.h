@@ -49,8 +49,13 @@ typedef struct
  *   i32 energy_mWh
  *   i32 frequency_mHz
  *   u8  meter_valid
+ *   i32 dc_voltage_mV
+ *   u8  dc_voltage_valid
+ *   u16 ntc_raw
+ *   i32 ntc_voltage_mV
+ *   u8  ntc_valid
  */
-#define DISPLAY_PROTOCOL_MEASUREMENT_PAYLOAD_SIZE  29U
+#define DISPLAY_PROTOCOL_MEASUREMENT_PAYLOAD_SIZE  41U
 #define DISPLAY_PROTOCOL_FIRST_BYTE_TIMEOUT_MS      1U
 #define DISPLAY_PROTOCOL_FRAME_TIMEOUT_MS          10U
 
