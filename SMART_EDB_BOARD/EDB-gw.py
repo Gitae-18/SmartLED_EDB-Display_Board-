@@ -24,6 +24,11 @@ except ImportError:  # pragma: no cover - depends on the target machine
     serial = None
     list_ports = None
 
+try:
+    import RPi.GPIO as GPIO
+except ImportError:  # pragma: no cover - only available on Raspberry Pi
+    GPIO = None
+
 
 STX = 0x02
 ETX = 0x03
@@ -255,11 +260,17 @@ class EDBGateway:
         gateway_id: int,
         timeout: float,
         debug: bool,
+        de_gpio: int | None,
+        de_before_tx: float,
+        de_after_tx: float,
     ) -> None:
         if serial is None:
             raise RuntimeError("pyserial is required: python -m pip install pyserial")
         self.gateway_id = gateway_id
         self.debug = debug
+        self.de_gpio = de_gpio
+        self.de_before_tx = de_before_tx
+        self.de_after_tx = de_after_tx
         self.stream = FrameStreamParser()
         self.serial = serial.Serial(
             port=port,
@@ -270,8 +281,21 @@ class EDBGateway:
             timeout=timeout,
             write_timeout=1.0,
         )
+        if self.de_gpio is not None:
+            if GPIO is None:
+                self.serial.close()
+                raise RuntimeError(
+                    "--de-gpio requires RPi.GPIO or rpi-lgpio; "
+                    "add --with rpi-lgpio to the uv command"
+                )
+            GPIO.setwarnings(False)
+            GPIO.setmode(GPIO.BCM)
+            GPIO.setup(self.de_gpio, GPIO.OUT, initial=GPIO.LOW)
 
     def close(self) -> None:
+        if self.de_gpio is not None and GPIO is not None:
+            GPIO.output(self.de_gpio, GPIO.LOW)
+            GPIO.cleanup(self.de_gpio)
         self.serial.close()
 
     def send(self, destination: int, command: int, payload: bytes = b"") -> None:
@@ -282,8 +306,18 @@ class EDBGateway:
             payload,
         )
         frame = encode_frame(packet)
-        written = self.serial.write(frame)
-        self.serial.flush()
+        if self.de_gpio is not None:
+            GPIO.output(self.de_gpio, GPIO.HIGH)
+            if self.de_before_tx > 0:
+                time.sleep(self.de_before_tx)
+        try:
+            written = self.serial.write(frame)
+            self.serial.flush()
+            if self.de_gpio is not None and self.de_after_tx > 0:
+                time.sleep(self.de_after_tx)
+        finally:
+            if self.de_gpio is not None:
+                GPIO.output(self.de_gpio, GPIO.LOW)
         if written != len(frame):
             raise IOError(f"short serial write: {written}/{len(frame)} bytes")
         if self.debug:
@@ -292,6 +326,8 @@ class EDBGateway:
     def receive(self) -> list[tuple[Packet, bytes]]:
         waiting = self.serial.in_waiting
         chunk = self.serial.read(waiting if waiting else 1)
+        if chunk and self.debug:
+            print(f"RX-BYTES {chunk.hex(' ').upper()}", file=sys.stderr, flush=True)
         return self.stream.feed(chunk) if chunk else []
 
 
@@ -384,11 +420,13 @@ def emit_timeout(board_id: int, command: int) -> None:
 def run_gateway(args: argparse.Namespace) -> int:
     port = select_port(args.port)
     gateway = EDBGateway(
-        port, args.baudrate, args.gateway_id, args.timeout, args.debug
+        port, args.baudrate, args.gateway_id, args.timeout, args.debug,
+        args.de_gpio, args.de_before_tx, args.de_after_tx,
     )
     print(
         f"EDB gateway opened {port} at {args.baudrate} 8-N-1 "
-        f"(gateway={args.gateway_id}, boards={','.join(map(str, args.board_ids))})",
+        f"(gateway={args.gateway_id}, boards={','.join(map(str, args.board_ids))}, "
+        f"DE={'auto' if args.de_gpio is None else f'BCM{args.de_gpio}'})",
         file=sys.stderr,
         flush=True,
     )
@@ -509,6 +547,18 @@ def parse_args() -> argparse.Namespace:
         help="per-board response timeout in seconds (default: 0.5)",
     )
     parser.add_argument("--timeout", type=float, default=0.05, help="serial read timeout")
+    parser.add_argument(
+        "--de-gpio", type=int,
+        help="BCM GPIO connected to active-high RS485 DE (for this GW: 11)",
+    )
+    parser.add_argument(
+        "--de-before-tx", type=float, default=0.001,
+        help="DE settling delay before TX in seconds (default: 0.001)",
+    )
+    parser.add_argument(
+        "--de-after-tx", type=float, default=0.001,
+        help="hold DE after UART drain in seconds (default: 0.001)",
+    )
     parser.add_argument("--debug", action="store_true", help="print TX/RX details to stderr")
     parser.add_argument("--self-test", action="store_true", help="test codec without serial hardware")
     args = parser.parse_args()
@@ -522,9 +572,12 @@ def parse_args() -> argparse.Namespace:
         parser.error(str(error))
     if args.gateway_id in args.board_ids:
         parser.error("--gateway-id must not match a board ID")
+    if args.de_gpio is not None and not 0 <= args.de_gpio <= 27:
+        parser.error("--de-gpio must be a BCM GPIO number from 0 to 27")
     if (
         args.interval <= 0 or args.request_gap < 0
         or args.response_timeout <= 0 or args.timeout < 0
+        or args.de_before_tx < 0 or args.de_after_tx < 0
     ):
         parser.error("interval and timeout values must be positive")
     return args

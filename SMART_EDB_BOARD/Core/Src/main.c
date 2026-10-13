@@ -42,7 +42,7 @@
 #define CONSOLE_RS485_TEST_PEER_ID  0U
 #define CONSOLE_TX_TIMEOUT_MS       100U
 #define RUN_LED_TOGGLE_INTERVAL_MS  1000U
-#define RS485_ID_SWITCH_ACTIVE_LOW  1U
+#define RS485_ID_SWITCH_ACTIVE_LOW  0U
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -920,9 +920,9 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Alternate = GPIO_AF0_TRACE;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /* Configure the active-low RS485 ID DIP switches (ID0..ID7). */
+  /* The DIP switch drives a selected ID bit high; idle bits stay low. */
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
   GPIO_InitStruct.Pin = RS485_ID0_Pin|RS485_ID1_Pin|RS485_ID2_Pin|RS485_ID3_Pin;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
