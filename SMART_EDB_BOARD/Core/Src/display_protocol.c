@@ -122,6 +122,8 @@ HAL_StatusTypeDef DisplayProtocol_SendMeasurements(uint8_t destination_id)
     DisplayProtocol_PutI32(&payload[36],
         DisplayProtocol_ScaleFloat(measurement->ntc_voltage, 1000.0f));
     payload[40] = measurement->ntc_valid ? 1U : 0U;
+    DisplayProtocol_PutI32(&payload[41],
+        DisplayProtocol_ScaleFloat(measurement->ntc_temperature_c, 1000.0f));
 
     return DisplayProtocol_SendPacket(
         destination_id,

@@ -27,7 +27,8 @@ uint16_t ADC_CTRL_GetADC1Average(void);
 bool ADC_CTRL_ReadDCVoltageRaw(uint16_t *raw, uint32_t timeout_ms);
 bool ADC_CTRL_ReadDCVoltage(float *voltage, uint32_t timeout_ms);
 bool ADC_CTRL_ReadADC2Raw(uint16_t *raw, uint32_t timeout_ms);
-bool ADC_CTRL_ReadNTC(uint16_t *raw, float *voltage, uint32_t timeout_ms);
+bool ADC_CTRL_ReadNTC(uint16_t *raw, float *voltage,
+                      float *temperature_c, uint32_t timeout_ms);
 
 #ifdef __cplusplus
 }

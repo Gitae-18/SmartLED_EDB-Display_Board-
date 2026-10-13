@@ -8,6 +8,73 @@ extern TIM_HandleTypeDef htim6;
 static uint16_t adc1_dma_buffer[ADC_CTRL_DMA_SAMPLE_COUNT] __ALIGNED(4);
 static bool adc1_running;
 
+#define NTC_LUT_SIZE          25U
+#define NTC_VALID_MIN_V       0.35f
+#define NTC_VALID_MAX_V       3.15f
+#define NTC_VALID_MIN_C      (-20.0f)
+#define NTC_VALID_MAX_C       65.0f
+#define NTC_INVALID_TEMP_C  (-999.0f)
+
+/* Same NTC voltage/temperature calibration table as SmartLED_Wisun_default. */
+static const float ntc_temp_table[NTC_LUT_SIZE] = {
+    -40.0f, -35.0f, -30.0f, -25.0f, -20.0f, -15.0f, -10.0f, -5.0f,
+      0.0f,   5.0f,  10.0f,  15.0f,  20.0f,  25.0f,  30.0f, 35.0f,
+     40.0f,  45.0f,  50.0f,  55.0f,  60.0f,  65.0f,  70.0f, 75.0f,
+     80.0f
+};
+
+static const float ntc_voltage_table[NTC_LUT_SIZE] = {
+    3.197196f, 3.162500f, 3.117680f, 3.060870f, 2.988679f,
+    2.902410f, 2.800000f, 2.677358f, 2.532558f, 2.357143f,
+    2.200000f, 1.980000f, 1.800000f, 1.650000f, 1.466259f,
+    1.291357f, 1.128233f, 0.979325f, 0.845373f, 0.726901f,
+    0.623167f, 0.533168f, 0.455663f, 0.389177f, 0.332641f
+};
+
+static bool ADC_CTRL_ConvertNTCVoltage(float voltage, float *temperature_c)
+{
+    uint32_t i;
+    float converted;
+
+    if (temperature_c == NULL)
+    {
+        return false;
+    }
+
+    *temperature_c = NTC_INVALID_TEMP_C;
+    if ((voltage < NTC_VALID_MIN_V) || (voltage > NTC_VALID_MAX_V))
+    {
+        return false;
+    }
+
+    converted = ntc_temp_table[NTC_LUT_SIZE - 1U];
+    for (i = 1U; i < NTC_LUT_SIZE; ++i)
+    {
+        float voltage_high = ntc_voltage_table[i - 1U];
+        float voltage_low = ntc_voltage_table[i];
+
+        if ((voltage <= voltage_high) && (voltage >= voltage_low))
+        {
+            float temperature_high = ntc_temp_table[i - 1U];
+            float temperature_low = ntc_temp_table[i];
+            float ratio = (voltage_high - voltage) /
+                          (voltage_high - voltage_low);
+
+            converted = temperature_high +
+                        ((temperature_low - temperature_high) * ratio);
+            break;
+        }
+    }
+
+    if ((converted < NTC_VALID_MIN_C) || (converted > NTC_VALID_MAX_C))
+    {
+        return false;
+    }
+
+    *temperature_c = converted;
+    return true;
+}
+
 void ADC_CTRL_Init(void)
 {
     adc1_running = false;
@@ -148,11 +215,12 @@ bool ADC_CTRL_ReadADC2Raw(uint16_t *raw, uint32_t timeout_ms)
     return (status == HAL_OK);
 }
 
-bool ADC_CTRL_ReadNTC(uint16_t *raw, float *voltage, uint32_t timeout_ms)
+bool ADC_CTRL_ReadNTC(uint16_t *raw, float *voltage,
+                      float *temperature_c, uint32_t timeout_ms)
 {
     uint16_t sample;
 
-    if ((raw == NULL) || (voltage == NULL) ||
+    if ((raw == NULL) || (voltage == NULL) || (temperature_c == NULL) ||
         !ADC_CTRL_ReadADC2Raw(&sample, timeout_ms))
     {
         return false;
@@ -160,5 +228,5 @@ bool ADC_CTRL_ReadNTC(uint16_t *raw, float *voltage, uint32_t timeout_ms)
 
     *raw = sample;
     *voltage = ((float)sample * 3.3f) / 4095.0f;
-    return true;
+    return ADC_CTRL_ConvertNTCVoltage(*voltage, temperature_c);
 }

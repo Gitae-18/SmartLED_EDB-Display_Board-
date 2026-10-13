@@ -916,6 +916,7 @@ static void Console_PrintStatus(void)
   char auxiliary[32];
   char dc_voltage[32];
   char ntc_voltage[32];
+  char temperature[32];
   char power_text[32];
   char frequency[32];
   int length;
@@ -930,6 +931,8 @@ static void Console_PrintStatus(void)
                            Console_ToMilli(power->dc_voltage), "V");
   Console_PrintSignedMilli(ntc_voltage, sizeof(ntc_voltage), "NTC",
                            Console_ToMilli(power->ntc_voltage), "V");
+  Console_PrintSignedMilli(temperature, sizeof(temperature), "TEMP",
+                           Console_ToMilli(power->ntc_temperature_c), "C");
   Console_PrintSignedMilli(power_text, sizeof(power_text), "P",
                            Console_ToMilli(power->active_power), "W");
   Console_PrintSignedMilli(frequency, sizeof(frequency), "F",
@@ -937,14 +940,14 @@ static void Console_PrintStatus(void)
 
   length = snprintf(line, sizeof(line),
       "[STATUS %lums] BL0942=%s %s %s %s %s ok=%lu fail=%lu | "
-      "%s %s(%s) %s raw=%u(%s) | "
+      "%s %s(%s) %s raw=%u %s(%s) | "
       "RS485 id=%u rx=%lu tx=%lu rsp=%lu last=0x%02X err=%lu\r\n",
       (unsigned long)HAL_GetTick(), power->meter_valid ? "OK" : "FAIL",
       voltage, current, power_text, frequency,
       (unsigned long)power->successful_updates,
       (unsigned long)power->failed_updates, auxiliary, dc_voltage,
       power->dc_voltage_valid ? "OK" : "FAIL",
-      ntc_voltage, (unsigned int)power->ntc_raw,
+      ntc_voltage, (unsigned int)power->ntc_raw, temperature,
       power->ntc_valid ? "OK" : "FAIL",
       (unsigned int)RS485_GetLocalId(),
       (unsigned long)protocol->received_packets,

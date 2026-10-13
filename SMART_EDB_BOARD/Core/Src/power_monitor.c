@@ -32,7 +32,8 @@ bool PowerMonitor_ForceUpdate(void)
     power_monitor_data.dc_voltage_valid = ADC_CTRL_ReadDCVoltage(
         &power_monitor_data.dc_voltage, 10U);
     power_monitor_data.ntc_valid = ADC_CTRL_ReadNTC(
-        &power_monitor_data.ntc_raw, &power_monitor_data.ntc_voltage, 10U);
+        &power_monitor_data.ntc_raw, &power_monitor_data.ntc_voltage,
+        &power_monitor_data.ntc_temperature_c, 10U);
 
     if (!BL0942_ReadAll(&meter_data))
     {

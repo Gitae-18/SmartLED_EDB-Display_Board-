@@ -23,6 +23,7 @@ typedef struct
     float auxiliary_current;
     float dc_voltage;
     float ntc_voltage;
+    float ntc_temperature_c;
     uint16_t ntc_raw;
     uint32_t updated_at_ms;
     uint32_t successful_updates;
