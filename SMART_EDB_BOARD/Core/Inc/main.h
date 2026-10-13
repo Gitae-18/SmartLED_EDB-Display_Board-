@@ -67,6 +67,22 @@ void Error_Handler(void);
 #define RUN_LED_GPIO_Port GPIOA
 #define RS485_DE_Pin GPIO_PIN_10
 #define RS485_DE_GPIO_Port GPIOA
+#define RS485_ID0_Pin GPIO_PIN_6
+#define RS485_ID0_GPIO_Port GPIOB
+#define RS485_ID1_Pin GPIO_PIN_5
+#define RS485_ID1_GPIO_Port GPIOB
+#define RS485_ID2_Pin GPIO_PIN_4
+#define RS485_ID2_GPIO_Port GPIOB
+#define RS485_ID3_Pin GPIO_PIN_3
+#define RS485_ID3_GPIO_Port GPIOB
+#define RS485_ID4_Pin GPIO_PIN_12
+#define RS485_ID4_GPIO_Port GPIOC
+#define RS485_ID5_Pin GPIO_PIN_11
+#define RS485_ID5_GPIO_Port GPIOC
+#define RS485_ID6_Pin GPIO_PIN_10
+#define RS485_ID6_GPIO_Port GPIOC
+#define RS485_ID7_Pin GPIO_PIN_15
+#define RS485_ID7_GPIO_Port GPIOA
 
 /* USER CODE BEGIN Private defines */
 

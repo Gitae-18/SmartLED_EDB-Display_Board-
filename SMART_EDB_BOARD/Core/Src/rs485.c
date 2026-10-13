@@ -5,7 +5,8 @@
 
 extern UART_HandleTypeDef huart5;
 
-static uint8_t rs485_local_id = 1U;
+/* ID 0 is reserved for the gateway; 0xFF is the broadcast destination. */
+static uint8_t rs485_local_id = 0U;
 
 static uint32_t RS485_RemainingTimeout(uint32_t start, uint32_t timeout)
 {
@@ -20,7 +21,7 @@ void RS485_Init(void)
 
 void RS485_SetLocalId(uint8_t local_id)
 {
-    if (local_id != RS485_BROADCAST_ID)
+    if ((local_id > 0U) && (local_id != RS485_BROADCAST_ID))
     {
         rs485_local_id = local_id;
     }

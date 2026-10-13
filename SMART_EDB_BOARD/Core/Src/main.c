@@ -39,9 +39,10 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define CONSOLE_REPORT_INTERVAL_MS  1000U
-#define CONSOLE_RS485_TEST_PEER_ID  2U
+#define CONSOLE_RS485_TEST_PEER_ID  0U
 #define CONSOLE_TX_TIMEOUT_MS       100U
 #define RUN_LED_TOGGLE_INTERVAL_MS  1000U
+#define RS485_ID_SWITCH_ACTIVE_LOW  1U
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -70,6 +71,8 @@ UART_HandleTypeDef huart6;
 static uint32_t console_last_report_ms;
 static uint32_t run_led_last_toggle_ms;
 static uint8_t console_rx_byte;
+static uint8_t board_dip_id;
+static bool board_dip_id_valid;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -92,6 +95,7 @@ static void Console_Process(void);
 static void Console_PrintStatus(void);
 static void Console_RunRS485SelfTest(void);
 static void RunLed_Process(void);
+static uint8_t Board_ReadRS485Id(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -118,6 +122,34 @@ static void Console_Write(const char *text)
     (void)HAL_UART_Transmit(&huart6, (const uint8_t *)text,
                             (uint16_t)strlen(text), CONSOLE_TX_TIMEOUT_MS);
   }
+}
+
+static uint8_t Board_ReadRS485Id(void)
+{
+  static GPIO_TypeDef *const ports[8] = {
+      RS485_ID0_GPIO_Port, RS485_ID1_GPIO_Port,
+      RS485_ID2_GPIO_Port, RS485_ID3_GPIO_Port,
+      RS485_ID4_GPIO_Port, RS485_ID5_GPIO_Port,
+      RS485_ID6_GPIO_Port, RS485_ID7_GPIO_Port
+  };
+  static const uint16_t pins[8] = {
+      RS485_ID0_Pin, RS485_ID1_Pin, RS485_ID2_Pin, RS485_ID3_Pin,
+      RS485_ID4_Pin, RS485_ID5_Pin, RS485_ID6_Pin, RS485_ID7_Pin
+  };
+  uint8_t id = 0U;
+  uint8_t bit;
+
+  for (bit = 0U; bit < 8U; ++bit)
+  {
+    bool pin_high = (HAL_GPIO_ReadPin(ports[bit], pins[bit]) == GPIO_PIN_SET);
+    bool switch_on = (RS485_ID_SWITCH_ACTIVE_LOW != 0U) ? !pin_high : pin_high;
+
+    if (switch_on)
+    {
+      id |= (uint8_t)(1U << bit);
+    }
+  }
+  return id;
 }
 
 static void RunLed_Process(void)
@@ -182,6 +214,13 @@ int main(void)
   BL0942_Init();
   MCS1806_Init();
   RS485_Init();
+  board_dip_id = Board_ReadRS485Id();
+  board_dip_id_valid = ((board_dip_id > 0U) &&
+                        (board_dip_id < RS485_BROADCAST_ID));
+  if (board_dip_id_valid)
+  {
+    RS485_SetLocalId(board_dip_id);
+  }
   PowerMonitor_Init();
   DisplayProtocol_Init();
   Console_Init();
@@ -881,6 +920,18 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Alternate = GPIO_AF0_TRACE;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
+  /* Configure the active-low RS485 ID DIP switches (ID0..ID7). */
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  GPIO_InitStruct.Pin = RS485_ID0_Pin|RS485_ID1_Pin|RS485_ID2_Pin|RS485_ID3_Pin;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  GPIO_InitStruct.Pin = RS485_ID4_Pin|RS485_ID5_Pin|RS485_ID6_Pin;
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+  GPIO_InitStruct.Pin = RS485_ID7_Pin;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
   /* USER CODE END MX_GPIO_Init_2 */
@@ -921,34 +972,56 @@ static void Console_PrintStatus(void)
   char frequency[32];
   int length;
 
-  Console_PrintSignedMilli(voltage, sizeof(voltage), "V",
+  Console_PrintSignedMilli(voltage, sizeof(voltage), "voltage_rms",
                            Console_ToMilli(power->voltage_rms), "V");
-  Console_PrintSignedMilli(current, sizeof(current), "I",
+  Console_PrintSignedMilli(current, sizeof(current), "current_rms",
                            Console_ToMilli(power->current_rms), "A");
-  Console_PrintSignedMilli(auxiliary, sizeof(auxiliary), "MCS",
+  Console_PrintSignedMilli(auxiliary, sizeof(auxiliary), "current",
                            Console_ToMilli(power->auxiliary_current), "A");
-  Console_PrintSignedMilli(dc_voltage, sizeof(dc_voltage), "DCV",
+  Console_PrintSignedMilli(dc_voltage, sizeof(dc_voltage), "voltage",
                            Console_ToMilli(power->dc_voltage), "V");
-  Console_PrintSignedMilli(ntc_voltage, sizeof(ntc_voltage), "NTC",
+  Console_PrintSignedMilli(ntc_voltage, sizeof(ntc_voltage), "adc_voltage",
                            Console_ToMilli(power->ntc_voltage), "V");
-  Console_PrintSignedMilli(temperature, sizeof(temperature), "TEMP",
+  Console_PrintSignedMilli(temperature, sizeof(temperature), "temperature",
                            Console_ToMilli(power->ntc_temperature_c), "C");
-  Console_PrintSignedMilli(power_text, sizeof(power_text), "P",
+  Console_PrintSignedMilli(power_text, sizeof(power_text), "active_power",
                            Console_ToMilli(power->active_power), "W");
-  Console_PrintSignedMilli(frequency, sizeof(frequency), "F",
+  Console_PrintSignedMilli(frequency, sizeof(frequency), "frequency",
                            Console_ToMilli(power->frequency), "Hz");
 
   length = snprintf(line, sizeof(line),
-      "[STATUS %lums] BL0942=%s %s %s %s %s ok=%lu fail=%lu | "
-      "%s %s(%s) %s raw=%u %s(%s) | "
-      "RS485 id=%u rx=%lu tx=%lu rsp=%lu last=0x%02X err=%lu\r\n",
+      "[STATUS AC uptime=%lums] sensor=BL0942 read_status=%s "
+      "%s %s %s %s update_success=%lu update_fail=%lu\r\n",
       (unsigned long)HAL_GetTick(), power->meter_valid ? "OK" : "FAIL",
       voltage, current, power_text, frequency,
       (unsigned long)power->successful_updates,
-      (unsigned long)power->failed_updates, auxiliary, dc_voltage,
+      (unsigned long)power->failed_updates);
+  if (length > 0)
+  {
+    Console_Write(line);
+  }
+
+  length = snprintf(line, sizeof(line),
+      "[STATUS DC] voltage_status=%s %s current_sensor=MCS1806 %s\r\n",
       power->dc_voltage_valid ? "OK" : "FAIL",
-      ntc_voltage, (unsigned int)power->ntc_raw, temperature,
+      dc_voltage, auxiliary);
+  if (length > 0)
+  {
+    Console_Write(line);
+  }
+
+  length = snprintf(line, sizeof(line),
+      "[STATUS NTC] read_status=%s %s %s adc_raw=%u\r\n",
       power->ntc_valid ? "OK" : "FAIL",
+      temperature, ntc_voltage, (unsigned int)power->ntc_raw);
+  if (length > 0)
+  {
+    Console_Write(line);
+  }
+
+  length = snprintf(line, sizeof(line),
+      "[STATUS RS485] node_id=%u rx_packets=%lu tx_packets=%lu "
+      "rx_responses=%lu last_response_cmd=0x%02X protocol_errors=%lu\r\n",
       (unsigned int)RS485_GetLocalId(),
       (unsigned long)protocol->received_packets,
       (unsigned long)protocol->transmitted_packets,
@@ -961,9 +1034,10 @@ static void Console_PrintStatus(void)
   }
 
   length = snprintf(line, sizeof(line),
-      "[BL0942] last=%s reg=0x%02X hal=%u uart_err=0x%lX "
-      "tx_fail=%lu rx_timeout=%lu rx_err=%lu checksum_err=%lu "
-      "rx=%u/4 raw=%02X %02X %02X %02X cs_expected=%02X cs_received=%02X\r\n",
+      "[BL0942 DIAG] last_result=%s register=0x%02X hal_status=%u uart_error=0x%lX "
+      "tx_failures=%lu rx_timeouts=%lu rx_errors=%lu checksum_errors=%lu "
+      "rx_bytes=%u/4 response_hex=%02X %02X %02X %02X "
+      "checksum_expected=%02X checksum_received=%02X\r\n",
       BL0942_ResultName(meter->last_result), (unsigned int)meter->reg,
       (unsigned int)meter->hal_status, (unsigned long)meter->uart_error,
       (unsigned long)meter->tx_failures, (unsigned long)meter->rx_timeouts,
@@ -1013,13 +1087,22 @@ static void Console_RunRS485SelfTest(void)
 
 static void Console_Init(void)
 {
+  char id_message[96];
+
   console_last_report_ms = HAL_GetTick();
   Console_Write("\r\nSMART_EDB_BOARD diagnostic console\r\n"
                 "UART6: 115200 baud, 8-N-1\r\n"
                 "Commands: h=help, s=status, m=measure now, "
-                "t=RS485 self-test, p=ping node 2, 1/2=set local ID\r\n"
+                "t=RS485 self-test, p=ping gateway 0, 1/2=set local ID\r\n"
                 "RS485 physical test requires a powered peer and correct A/B/GND wiring.\r\n");
   Console_RunRS485SelfTest();
+  (void)snprintf(id_message, sizeof(id_message),
+                 "[RS485] DIP ID=%u local_id=%u status=%s "
+                 "(valid board IDs: 1..254)\r\n",
+                 (unsigned int)board_dip_id,
+                 (unsigned int)RS485_GetLocalId(),
+                 board_dip_id_valid ? "OK" : "INVALID");
+  Console_Write(id_message);
 }
 
 static void Console_Process(void)
@@ -1060,7 +1143,7 @@ static void Console_Process(void)
     case 'p':
     case 'P':
       Console_Write(DisplayProtocol_SendPing(CONSOLE_RS485_TEST_PEER_ID) == HAL_OK ?
-                    "[RS485] ping sent to node 2; check rsp counter.\r\n" :
+                    "[RS485] ping sent to gateway 0; check rsp counter.\r\n" :
                     "[RS485] ping transmit failed.\r\n");
       break;
 
@@ -1077,7 +1160,7 @@ static void Console_Process(void)
     case 'h':
     case 'H':
       Console_Write("Commands: h=help, s=status, m=measure now, "
-                    "t=RS485 self-test, p=ping node 2, 1/2=set local ID\r\n");
+                    "t=RS485 self-test, p=ping gateway 0, 1/2=set local ID\r\n");
       break;
 
     case '\r':
