@@ -41,6 +41,7 @@
 #define CONSOLE_REPORT_INTERVAL_MS  1000U
 #define CONSOLE_RS485_TEST_PEER_ID  2U
 #define CONSOLE_TX_TIMEOUT_MS       100U
+#define RUN_LED_TOGGLE_INTERVAL_MS  1000U
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -67,6 +68,7 @@ UART_HandleTypeDef huart6;
 
 /* USER CODE BEGIN PV */
 static uint32_t console_last_report_ms;
+static uint32_t run_led_last_toggle_ms;
 static uint8_t console_rx_byte;
 /* USER CODE END PV */
 
@@ -89,6 +91,7 @@ static void Console_Init(void);
 static void Console_Process(void);
 static void Console_PrintStatus(void);
 static void Console_RunRS485SelfTest(void);
+static void RunLed_Process(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -114,6 +117,18 @@ static void Console_Write(const char *text)
   {
     (void)HAL_UART_Transmit(&huart6, (const uint8_t *)text,
                             (uint16_t)strlen(text), CONSOLE_TX_TIMEOUT_MS);
+  }
+}
+
+static void RunLed_Process(void)
+{
+  uint32_t now = HAL_GetTick();
+
+  if ((uint32_t)(now - run_led_last_toggle_ms) >=
+      RUN_LED_TOGGLE_INTERVAL_MS)
+  {
+    run_led_last_toggle_ms = now;
+    HAL_GPIO_TogglePin(RUN_LED_GPIO_Port, RUN_LED_Pin);
   }
 }
 /* USER CODE END 0 */
@@ -170,6 +185,7 @@ int main(void)
   PowerMonitor_Init();
   DisplayProtocol_Init();
   Console_Init();
+  run_led_last_toggle_ms = HAL_GetTick();
 
   /* USER CODE END 2 */
 
@@ -184,6 +200,7 @@ int main(void)
     PowerMonitor_Update();
     DisplayProtocol_Process();
     Console_Process();
+    RunLed_Process();
 
   }
   /* USER CODE END 3 */
