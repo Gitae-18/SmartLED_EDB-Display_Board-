@@ -60,6 +60,11 @@ typedef struct
     uint8_t response[4];
     uint8_t checksum_expected;
     uint8_t checksum_received;
+    uint32_t i_rms_raw;
+    uint32_t v_rms_raw;
+    uint32_t watt_raw;
+    uint32_t energy_raw;
+    uint32_t frequency_raw;
 } BL0942_Diagnostics_t;
 
 const BL0942_Diagnostics_t *BL0942_GetDiagnostics(void);

@@ -1050,6 +1050,19 @@ static void Console_PrintStatus(void)
   {
     Console_Write(line);
   }
+
+  length = snprintf(line, sizeof(line),
+      "[BL0942 RAW] I_RMS=0x%06lX V_RMS=0x%06lX WATT=0x%06lX "
+      "ENERGY=0x%06lX FREQ=0x%06lX\r\n",
+      (unsigned long)(meter->i_rms_raw & 0xFFFFFFUL),
+      (unsigned long)(meter->v_rms_raw & 0xFFFFFFUL),
+      (unsigned long)(meter->watt_raw & 0xFFFFFFUL),
+      (unsigned long)(meter->energy_raw & 0xFFFFFFUL),
+      (unsigned long)(meter->frequency_raw & 0xFFFFFFUL));
+  if (length > 0)
+  {
+    Console_Write(line);
+  }
 }
 
 static void Console_RunRS485SelfTest(void)

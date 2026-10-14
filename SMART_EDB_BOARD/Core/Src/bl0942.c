@@ -149,6 +149,27 @@ bool BL0942_ReadRegister(uint8_t reg, uint32_t *value)
     *value = (uint32_t)response[0] |
              ((uint32_t)response[1] << 8U) |
              ((uint32_t)response[2] << 16U);
+
+    switch (reg)
+    {
+        case BL0942_REG_I_RMS:
+            diagnostics.i_rms_raw = *value;
+            break;
+        case BL0942_REG_V_RMS:
+            diagnostics.v_rms_raw = *value;
+            break;
+        case BL0942_REG_WATT:
+            diagnostics.watt_raw = *value;
+            break;
+        case BL0942_REG_CF_CNT:
+            diagnostics.energy_raw = *value;
+            break;
+        case BL0942_REG_FREQ:
+            diagnostics.frequency_raw = *value;
+            break;
+        default:
+            break;
+    }
     return true;
 }
 
