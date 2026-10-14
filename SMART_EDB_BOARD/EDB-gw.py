@@ -132,6 +132,26 @@ class FrameStreamParser:
         self.buffer = bytearray()
         self.discarded_bytes = 0
         self.invalid_frames = 0
+        self.length_errors = 0
+        self.crc_errors = 0
+        self.format_errors = 0
+        self.diagnostics: list[str] = []
+
+    def _record_error(self, category: str, message: str, raw: bytes) -> None:
+        self.invalid_frames += 1
+        if category == "length":
+            self.length_errors += 1
+        elif category == "crc":
+            self.crc_errors += 1
+        else:
+            self.format_errors += 1
+        self.diagnostics.append(
+            f"{category}: {message}; raw={raw.hex(' ').upper()}"
+        )
+
+    def pop_diagnostics(self) -> list[str]:
+        diagnostics, self.diagnostics = self.diagnostics, []
+        return diagnostics
 
     def feed(self, data: bytes) -> list[tuple[Packet, bytes]]:
         self.buffer.extend(data)
@@ -153,7 +173,11 @@ class FrameStreamParser:
 
             body_length = self.buffer[1]
             if not 3 <= body_length <= 3 + MAX_PAYLOAD_SIZE:
-                self.invalid_frames += 1
+                self._record_error(
+                    "length",
+                    f"invalid body length {body_length}",
+                    bytes(self.buffer[: min(len(self.buffer), 8)]),
+                )
                 del self.buffer[0]
                 continue
 
@@ -163,9 +187,17 @@ class FrameStreamParser:
             candidate = bytes(self.buffer[:frame_length])
             try:
                 packet = decode_frame(candidate)
-            except ProtocolError:
-                self.invalid_frames += 1
-                del self.buffer[0]
+            except ProtocolError as error:
+                category = "crc" if str(error).startswith("CRC mismatch") else "format"
+                self._record_error(category, str(error), candidate)
+                if category == "crc":
+                    # STX, length, and ETX were valid, so this is a complete
+                    # damaged frame. Skip its binary payload as one unit.
+                    del self.buffer[:frame_length]
+                else:
+                    # The length byte itself may be damaged. Advance only past
+                    # STX and scan again so a following valid frame is retained.
+                    del self.buffer[0]
                 continue
 
             packets.append((packet, candidate))
@@ -175,11 +207,16 @@ class FrameStreamParser:
 
 
 def parse_measurements(payload: bytes) -> dict[str, Any]:
-    if len(payload) != 45:
-        raise ProtocolError(f"measurement payload must be 45 bytes, got {len(payload)}")
+    supported_lengths = (29, 34, 41, 45)
+    if len(payload) not in supported_lengths:
+        raise ProtocolError(
+            "measurement payload must be 29, 34, 41, or 45 bytes, "
+            f"got {len(payload)}"
+        )
 
-    values = struct.unpack("<IiiiiiiBiBH iBi".replace(" ", ""), payload)
-    return {
+    values = struct.unpack("<IiiiiiiB", payload[:29])
+    result: dict[str, Any] = {
+        "payload_length": len(payload),
         "updated_at_ms": values[0],
         "ac_voltage_rms_v": values[1] / 1000.0,
         "ac_current_rms_a": values[2] / 1000.0,
@@ -188,13 +225,26 @@ def parse_measurements(payload: bytes) -> dict[str, Any]:
         "ac_energy_wh": values[5] / 1000.0,
         "ac_frequency_hz": values[6] / 1000.0,
         "ac_meter_valid": bool(values[7]),
-        "dc_voltage_v": values[8] / 1000.0,
-        "dc_voltage_valid": bool(values[9]),
-        "ntc_adc_raw": values[10],
-        "ntc_adc_voltage_v": values[11] / 1000.0,
-        "ntc_valid": bool(values[12]),
-        "ntc_temperature_c": values[13] / 1000.0,
     }
+    if len(payload) >= 34:
+        dc_voltage_mv, dc_voltage_valid = struct.unpack_from("<iB", payload, 29)
+        result.update({
+            "dc_voltage_v": dc_voltage_mv / 1000.0,
+            "dc_voltage_valid": bool(dc_voltage_valid),
+        })
+    if len(payload) >= 41:
+        ntc_raw, ntc_voltage_mv, ntc_valid = struct.unpack_from(
+            "<HiB", payload, 34
+        )
+        result.update({
+            "ntc_adc_raw": ntc_raw,
+            "ntc_adc_voltage_v": ntc_voltage_mv / 1000.0,
+            "ntc_valid": bool(ntc_valid),
+        })
+    if len(payload) >= 45:
+        temperature_mc = struct.unpack_from("<i", payload, 41)[0]
+        result["ntc_temperature_c"] = temperature_mc / 1000.0
+    return result
 
 
 def parse_status(payload: bytes) -> dict[str, Any]:
@@ -328,7 +378,13 @@ class EDBGateway:
         chunk = self.serial.read(waiting if waiting else 1)
         if chunk and self.debug:
             print(f"RX-BYTES {chunk.hex(' ').upper()}", file=sys.stderr, flush=True)
-        return self.stream.feed(chunk) if chunk else []
+        packets = self.stream.feed(chunk) if chunk else []
+        if self.debug:
+            for diagnostic in self.stream.pop_diagnostics():
+                print(f"RX-INVALID {diagnostic}", file=sys.stderr, flush=True)
+        else:
+            self.stream.pop_diagnostics()
+        return packets
 
 
 def select_port(requested: str | None) -> str:
@@ -510,6 +566,27 @@ def self_test() -> int:
     measurement = parse_measurements(measurement_payload)
     assert measurement["ac_voltage_rms_v"] == 48.657
     assert measurement["ntc_temperature_c"] == 24.4
+    assert measurement["payload_length"] == 45
+
+    legacy_29 = parse_measurements(measurement_payload[:29])
+    legacy_34 = parse_measurements(measurement_payload[:34])
+    legacy_41 = parse_measurements(measurement_payload[:41])
+    assert "dc_voltage_v" not in legacy_29
+    assert legacy_34["dc_voltage_v"] == 31.271
+    assert "ntc_adc_raw" not in legacy_34
+    assert legacy_41["ntc_adc_raw"] == 2071
+    assert "ntc_temperature_c" not in legacy_41
+
+    damaged = bytearray(encoded)
+    damaged[-3] ^= 0x01
+    following = encode_frame(Packet(1, 2, CMD_PING, b"next"))
+    recovery_parser = FrameStreamParser()
+    recovered = recovery_parser.feed(bytes(damaged) + following)
+    assert recovered == [(Packet(1, 2, CMD_PING, b"next"), following)]
+    assert recovery_parser.crc_errors == 1
+    assert recovery_parser.invalid_frames == 1
+    assert recovery_parser.pop_diagnostics()
+
     assert parse_board_ids("1,3,5-7") == [1, 3, 5, 6, 7]
     print("protocol self-test: PASS")
     return 0
@@ -556,8 +633,8 @@ def parse_args() -> argparse.Namespace:
         help="DE settling delay before TX in seconds (default: 0.001)",
     )
     parser.add_argument(
-        "--de-after-tx", type=float, default=0.001,
-        help="hold DE after UART drain in seconds (default: 0.001)",
+        "--de-after-tx", type=float, default=0.0,
+        help="hold DE after UART drain in seconds (default: 0; switch to RX immediately)",
     )
     parser.add_argument("--debug", action="store_true", help="print TX/RX details to stderr")
     parser.add_argument("--self-test", action="store_true", help="test codec without serial hardware")

@@ -174,7 +174,7 @@ bool BL0942_ReadVoltage(float *voltage)
     {
         return false;
     }
-    *voltage = (float)raw / BL0942_VOLTAGE_COEFFICIENT;
+    *voltage = (float)raw * BL0942_VOLTAGE_COEFFICIENT;
     return true;
 }
 

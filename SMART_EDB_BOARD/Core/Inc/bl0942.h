@@ -11,7 +11,7 @@ extern "C" {
 
 /* Board-dependent calibration. Adjust these after measuring a known load. */
 #ifndef BL0942_VOLTAGE_COEFFICIENT
-#define BL0942_VOLTAGE_COEFFICIENT  73989.0f
+#define BL0942_VOLTAGE_COEFFICIENT  0.000062956f
 #endif
 #ifndef BL0942_CURRENT_COEFFICIENT
 #define BL0942_CURRENT_COEFFICIENT  305978.0f
