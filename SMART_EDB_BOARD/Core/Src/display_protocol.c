@@ -96,6 +96,13 @@ void DisplayProtocol_Init(void)
         (HAL_GPIO_ReadPin(AC_Ctrl_GPIO_Port, AC_Ctrl_Pin) == GPIO_PIN_SET);
 }
 
+void DisplayProtocol_SetACOutput(bool enabled)
+{
+    display_status.ac_output_enabled = enabled;
+    HAL_GPIO_WritePin(AC_Ctrl_GPIO_Port, AC_Ctrl_Pin,
+        enabled ? GPIO_PIN_SET : GPIO_PIN_RESET);
+}
+
 HAL_StatusTypeDef DisplayProtocol_SendMeasurements(uint8_t destination_id)
 {
     const PowerMonitor_Data_t *measurement = PowerMonitor_GetData();
@@ -225,9 +232,7 @@ void DisplayProtocol_Process(void)
                 }
                 break;
             }
-            display_status.ac_output_enabled = (request.data[0] != 0U);
-            HAL_GPIO_WritePin(AC_Ctrl_GPIO_Port, AC_Ctrl_Pin,
-                display_status.ac_output_enabled ? GPIO_PIN_SET : GPIO_PIN_RESET);
+            DisplayProtocol_SetACOutput(request.data[0] != 0U);
             if (send_response)
             {
                 payload[0] = display_status.ac_output_enabled ? 1U : 0U;

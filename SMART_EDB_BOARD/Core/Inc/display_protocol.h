@@ -62,6 +62,7 @@ typedef struct
 
 void DisplayProtocol_Init(void);
 void DisplayProtocol_Process(void);
+void DisplayProtocol_SetACOutput(bool enabled);
 
 HAL_StatusTypeDef DisplayProtocol_SendMeasurements(uint8_t destination_id);
 HAL_StatusTypeDef DisplayProtocol_SendPing(uint8_t destination_id);

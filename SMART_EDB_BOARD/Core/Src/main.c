@@ -1119,7 +1119,8 @@ static void Console_Init(void)
   Console_Write("\r\nSMART_EDB_BOARD diagnostic console\r\n"
                 "UART6: 115200 baud, 8-N-1\r\n"
                 "Commands: h=help, s=status, m=measure now, "
-                "t=RS485 self-test, p=ping gateway 0, 1/2=set local ID\r\n"
+                "t=RS485 self-test, p=ping gateway 0, "
+                "o=AC relay on, f=AC relay off, 1/2=set local ID\r\n"
                 "RS485 physical test requires a powered peer and correct A/B/GND wiring.\r\n");
   Console_RunRS485SelfTest();
   (void)snprintf(id_message, sizeof(id_message),
@@ -1173,6 +1174,18 @@ static void Console_Process(void)
                     "[RS485] ping transmit failed.\r\n");
       break;
 
+    case 'o':
+    case 'O':
+      DisplayProtocol_SetACOutput(true);
+      Console_Write("[AC RELAY] ON (PA5=HIGH)\r\n");
+      break;
+
+    case 'f':
+    case 'F':
+      DisplayProtocol_SetACOutput(false);
+      Console_Write("[AC RELAY] OFF (PA5=LOW)\r\n");
+      break;
+
     case '1':
       RS485_SetLocalId(1U);
       Console_Write("[RS485] local node ID set to 1.\r\n");
@@ -1186,7 +1199,8 @@ static void Console_Process(void)
     case 'h':
     case 'H':
       Console_Write("Commands: h=help, s=status, m=measure now, "
-                    "t=RS485 self-test, p=ping gateway 0, 1/2=set local ID\r\n");
+                    "t=RS485 self-test, p=ping gateway 0, "
+                    "o=AC relay on, f=AC relay off, 1/2=set local ID\r\n");
       break;
 
     case '\r':
