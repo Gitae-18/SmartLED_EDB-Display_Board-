@@ -9,6 +9,7 @@
 #define BL0942_REG_CF_CNT         0x07U
 #define BL0942_REG_FREQ           0x08U
 #define BL0942_REG_STATUS         0x09U
+#define BL0942_REG_GAIN_CR        0x1AU
 #define BL0942_UART_TIMEOUT_MS     30U
 #define BL0942_DEVICE_ADDRESS      0U
 
@@ -61,6 +62,7 @@ static int32_t BL0942_SignExtend24(uint32_t value)
 
 bool BL0942_Init(void)
 {
+    uint32_t gain_cr;
     uint32_t status;
 
     memset(&diagnostics, 0, sizeof(diagnostics));
@@ -68,6 +70,15 @@ bool BL0942_Init(void)
     /* PA4 is labelled RX_ENABLE in the IOC and enables the meter RX path. */
     HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_SET);
     HAL_Delay(20U);
+
+    /* Read the current-channel gain before any measurement register. */
+    if (!BL0942_ReadRegister(BL0942_REG_GAIN_CR, &gain_cr))
+    {
+        return false;
+    }
+    diagnostics.gain_cr_raw = gain_cr;
+    diagnostics.gain_cr_valid = true;
+
     return BL0942_ReadRegister(BL0942_REG_STATUS, &status);
 }
 
@@ -166,6 +177,10 @@ bool BL0942_ReadRegister(uint8_t reg, uint32_t *value)
             break;
         case BL0942_REG_FREQ:
             diagnostics.frequency_raw = *value;
+            break;
+        case BL0942_REG_GAIN_CR:
+            diagnostics.gain_cr_raw = *value;
+            diagnostics.gain_cr_valid = true;
             break;
         default:
             break;

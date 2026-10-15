@@ -970,7 +970,16 @@ static void Console_PrintStatus(void)
   char temperature[32];
   char power_text[32];
   char frequency[32];
+  uint32_t current_gain;
   int length;
+
+  switch (meter->gain_cr_raw & 0x03U)
+  {
+    case 0U: current_gain = 1U; break;
+    case 1U: current_gain = 4U; break;
+    case 2U: current_gain = 16U; break;
+    default: current_gain = 24U; break;
+  }
 
   Console_PrintSignedMilli(voltage, sizeof(voltage), "voltage_rms",
                            Console_ToMilli(power->voltage_rms), "V");
@@ -1053,12 +1062,16 @@ static void Console_PrintStatus(void)
 
   length = snprintf(line, sizeof(line),
       "[BL0942 RAW] I_RMS=0x%06lX V_RMS=0x%06lX WATT=0x%06lX "
-      "ENERGY=0x%06lX FREQ=0x%06lX\r\n",
+      "ENERGY=0x%06lX FREQ=0x%06lX GAIN_CR=0x%06lX "
+      "CURRENT_GAIN=x%lu GAIN_READ=%s\r\n",
       (unsigned long)(meter->i_rms_raw & 0xFFFFFFUL),
       (unsigned long)(meter->v_rms_raw & 0xFFFFFFUL),
       (unsigned long)(meter->watt_raw & 0xFFFFFFUL),
       (unsigned long)(meter->energy_raw & 0xFFFFFFUL),
-      (unsigned long)(meter->frequency_raw & 0xFFFFFFUL));
+      (unsigned long)(meter->frequency_raw & 0xFFFFFFUL),
+      (unsigned long)(meter->gain_cr_raw & 0xFFFFFFUL),
+      (unsigned long)current_gain,
+      meter->gain_cr_valid ? "OK" : "FAIL");
   if (length > 0)
   {
     Console_Write(line);

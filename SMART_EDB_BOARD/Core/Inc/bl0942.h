@@ -60,6 +60,8 @@ typedef struct
     uint8_t response[4];
     uint8_t checksum_expected;
     uint8_t checksum_received;
+    uint32_t gain_cr_raw;
+    bool gain_cr_valid;
     uint32_t i_rms_raw;
     uint32_t v_rms_raw;
     uint32_t watt_raw;
