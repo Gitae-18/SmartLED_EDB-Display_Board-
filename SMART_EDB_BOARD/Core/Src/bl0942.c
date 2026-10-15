@@ -206,7 +206,7 @@ bool BL0942_ReadCurrent(float *current)
     {
         return false;
     }
-    *current = (float)raw / BL0942_CURRENT_COEFFICIENT;
+    *current = (float)raw * BL0942_CURRENT_COEFFICIENT;
     return true;
 }
 
