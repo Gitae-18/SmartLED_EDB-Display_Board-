@@ -186,7 +186,7 @@ bool ADC_CTRL_ReadDCVoltage(float *voltage, uint32_t timeout_ms)
         return false;
     }
 
-    *voltage = ((float)raw * ADC_CTRL_DC_VOLTAGE_FULL_SCALE_V) / 4095.0f;
+    *voltage = ((float)raw * 3.3f) / 4095.0f;
     return true;
 }
 
