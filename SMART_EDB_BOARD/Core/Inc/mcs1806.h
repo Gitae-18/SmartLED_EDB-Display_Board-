@@ -8,7 +8,12 @@
 extern "C" {
 #endif
 
-#define MCS1806_SENSITIVITY     0.240f
+/*
+ * MCS1806GS-3-20 (nominal 66 mV/A).
+ * The 60 mV/A value preserves the existing measured calibration ratio
+ * (240 mV/A measured for the previous nominal 264 mV/A sensor).
+ */
+#define MCS1806_SENSITIVITY     0.060f
 #define MCS1806_DEFAULT_ZERO_V  1.500f
 #define MCS1806_ADC_REFERENCE_V 3.300f
 #define MCS1806_ADC_MAX_COUNT   4095.0f  /* ADC1 is configured for 12 bit */
