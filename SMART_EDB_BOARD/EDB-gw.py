@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import struct
 import sys
 import time
@@ -430,7 +431,12 @@ def parse_board_ids(specification: str) -> list[int]:
     return board_ids
 
 
-def emit_packet(gateway: EDBGateway, packet: Packet, raw: bytes) -> None:
+def emit_packet(
+    gateway: EDBGateway,
+    packet: Packet,
+    raw: bytes,
+    mqtt_bridge: Any | None = None,
+) -> None:
     # Some USB-RS485 adapters echo transmitted requests; do not report them as data.
     if packet.source_id == gateway.gateway_id:
         if gateway.debug:
@@ -453,6 +459,12 @@ def emit_packet(gateway: EDBGateway, packet: Packet, raw: bytes) -> None:
         record = packet_record(packet, raw, {"parse_error": str(error)})
     print(json.dumps(record, ensure_ascii=False, separators=(",", ":")), flush=True)
 
+    if (
+        mqtt_bridge is not None
+        and packet.command == (CMD_GET_MEASUREMENTS | CMD_RESPONSE_FLAG)
+    ):
+        mqtt_bridge.publish_telemetry("measurements", record, qos=1)
+
     # The board's diagnostic 'p' command sends a ping request to gateway node 2.
     if packet.command == CMD_PING and packet.destination_id != BROADCAST_ID:
         gateway.send(
@@ -473,43 +485,92 @@ def emit_timeout(board_id: int, command: int) -> None:
     print(json.dumps(record, separators=(",", ":")), flush=True)
 
 
+def connect_mqtt(args: argparse.Namespace) -> Any | None:
+    """Connect MQTT when configured; otherwise keep stdout-only operation."""
+    if not args.mqtt_host:
+        return None
+
+    try:
+        from mqtt_client import MqttBridge
+    except ImportError as error:
+        raise RuntimeError(
+            "MQTT requires: python -m pip install paho-mqtt"
+        ) from error
+
+    client_id = args.mqtt_client_id or f"edb-gateway-{args.gateway_id}"
+    bridge = MqttBridge(
+        host=args.mqtt_host,
+        port=args.mqtt_port,
+        base=args.mqtt_base_topic,
+        client_id=client_id,
+        username=args.mqtt_username,
+        password=args.mqtt_password,
+        tls_ca=args.mqtt_tls_ca,
+        tls_cert=args.mqtt_tls_cert,
+        tls_key=args.mqtt_tls_key,
+    )
+    result = bridge.connect()
+    if result != 0:
+        raise RuntimeError(f"MQTT connect failed with result code {result}")
+    bridge.loop_start()
+    if not bridge.wait_connected(args.mqtt_connect_timeout):
+        bridge.disconnect()
+        raise RuntimeError(
+            f"MQTT connection was not established within "
+            f"{args.mqtt_connect_timeout:g} seconds"
+        )
+
+    print(
+        f"MQTT connected to {args.mqtt_host}:{args.mqtt_port} "
+        f"as {client_id}; telemetry topic="
+        f"{args.mqtt_base_topic.strip('/')}/{client_id}/telemetry/measurements",
+        file=sys.stderr,
+        flush=True,
+    )
+    return bridge
+
+
 def run_gateway(args: argparse.Namespace) -> int:
     port = select_port(args.port)
     gateway = EDBGateway(
         port, args.baudrate, args.gateway_id, args.timeout, args.debug,
         args.de_gpio, args.de_before_tx, args.de_after_tx,
     )
-    print(
-        f"EDB gateway opened {port} at {args.baudrate} 8-N-1 "
-        f"(gateway={args.gateway_id}, boards={','.join(map(str, args.board_ids))}, "
-        f"DE={'auto' if args.de_gpio is None else f'BCM{args.de_gpio}'})",
-        file=sys.stderr,
-        flush=True,
-    )
-
-    command_payload = b""
-    if args.command == "measurements":
-        command = CMD_GET_MEASUREMENTS
-    elif args.command == "status":
-        command = CMD_GET_STATUS
-    elif args.command == "ping":
-        command = CMD_PING
-        command_payload = struct.pack("<I", int(time.monotonic() * 1000) & 0xFFFFFFFF)
-    elif args.command == "ac-on":
-        command = CMD_SET_AC_OUTPUT
-        command_payload = b"\x01"
-    elif args.command == "ac-off":
-        command = CMD_SET_AC_OUTPUT
-        command_payload = b"\x00"
-    else:
-        command = None
-
-    board_index = 0
-    pending_board: int | None = None
-    response_deadline = 0.0
-    next_request = time.monotonic()
-    responses = 0
+    mqtt_bridge = None
     try:
+        mqtt_bridge = connect_mqtt(args)
+        print(
+            f"EDB gateway opened {port} at {args.baudrate} 8-N-1 "
+            f"(gateway={args.gateway_id}, boards={','.join(map(str, args.board_ids))}, "
+            f"DE={'auto' if args.de_gpio is None else f'BCM{args.de_gpio}'})",
+            file=sys.stderr,
+            flush=True,
+        )
+
+        command_payload = b""
+        if args.command == "measurements":
+            command = CMD_GET_MEASUREMENTS
+        elif args.command == "status":
+            command = CMD_GET_STATUS
+        elif args.command == "ping":
+            command = CMD_PING
+            command_payload = struct.pack(
+                "<I", int(time.monotonic() * 1000) & 0xFFFFFFFF
+            )
+        elif args.command == "ac-on":
+            command = CMD_SET_AC_OUTPUT
+            command_payload = b"\x01"
+        elif args.command == "ac-off":
+            command = CMD_SET_AC_OUTPUT
+            command_payload = b"\x00"
+        else:
+            command = None
+
+        board_index = 0
+        pending_board: int | None = None
+        response_deadline = 0.0
+        next_request = time.monotonic()
+        responses = 0
         while True:
             now = time.monotonic()
             if pending_board is not None and now >= response_deadline:
@@ -531,7 +592,7 @@ def run_gateway(args: argparse.Namespace) -> int:
 
             received = gateway.receive()
             for packet, raw in received:
-                emit_packet(gateway, packet, raw)
+                emit_packet(gateway, packet, raw, mqtt_bridge)
                 if (
                     pending_board is not None
                     and packet.source_id == pending_board
@@ -545,6 +606,8 @@ def run_gateway(args: argparse.Namespace) -> int:
     except KeyboardInterrupt:
         return 0
     finally:
+        if mqtt_bridge is not None:
+            mqtt_bridge.disconnect()
         gateway.close()
 
 
@@ -637,6 +700,47 @@ def parse_args() -> argparse.Namespace:
         help="hold DE after UART drain in seconds (default: 0; switch to RX immediately)",
     )
     parser.add_argument("--debug", action="store_true", help="print TX/RX details to stderr")
+    parser.add_argument(
+        "--mqtt-host", default=os.getenv("MQTT_HOST"),
+        help="MQTT broker hostname; enables MQTT publishing (env: MQTT_HOST)",
+    )
+    parser.add_argument(
+        "--mqtt-port", type=int, default=int(os.getenv("MQTT_PORT", "1883")),
+        help="MQTT broker port (env: MQTT_PORT, default: 1883)",
+    )
+    parser.add_argument(
+        "--mqtt-client-id", default=os.getenv("MQTT_CLIENT_ID"),
+        help="MQTT client/gateway ID (env: MQTT_CLIENT_ID)",
+    )
+    parser.add_argument(
+        "--mqtt-username", default=os.getenv("MQTT_USERNAME"),
+        help="MQTT username (env: MQTT_USERNAME)",
+    )
+    parser.add_argument(
+        "--mqtt-password", default=os.getenv("MQTT_PASSWORD"),
+        help="MQTT password (env: MQTT_PASSWORD)",
+    )
+    parser.add_argument(
+        "--mqtt-base-topic", default=os.getenv("MQTT_BASE_TOPIC", "display"),
+        help="MQTT base topic (env: MQTT_BASE_TOPIC, default: display)",
+    )
+    parser.add_argument(
+        "--mqtt-tls-ca", default=os.getenv("MQTT_TLS_CA"),
+        help="trusted CA certificate path (env: MQTT_TLS_CA)",
+    )
+    parser.add_argument(
+        "--mqtt-tls-cert", default=os.getenv("MQTT_TLS_CERT"),
+        help="client certificate path (env: MQTT_TLS_CERT)",
+    )
+    parser.add_argument(
+        "--mqtt-tls-key", default=os.getenv("MQTT_TLS_KEY"),
+        help="client private-key path (env: MQTT_TLS_KEY)",
+    )
+    parser.add_argument(
+        "--mqtt-connect-timeout", type=float,
+        default=float(os.getenv("MQTT_CONNECT_TIMEOUT", "10")),
+        help="MQTT connection timeout in seconds (default: 10)",
+    )
     parser.add_argument("--self-test", action="store_true", help="test codec without serial hardware")
     args = parser.parse_args()
 
@@ -657,6 +761,10 @@ def parse_args() -> argparse.Namespace:
         or args.de_before_tx < 0 or args.de_after_tx < 0
     ):
         parser.error("interval and timeout values must be positive")
+    if not 1 <= args.mqtt_port <= 65535:
+        parser.error("--mqtt-port must be 1..65535")
+    if args.mqtt_connect_timeout <= 0:
+        parser.error("--mqtt-connect-timeout must be positive")
     return args
 
 
