@@ -59,6 +59,7 @@ typedef struct
 #define DISPLAY_PROTOCOL_MEASUREMENT_PAYLOAD_SIZE  45U
 #define DISPLAY_PROTOCOL_FIRST_BYTE_TIMEOUT_MS      1U
 #define DISPLAY_PROTOCOL_FRAME_TIMEOUT_MS          10U
+#define DISPLAY_PROTOCOL_RESPONSE_DELAY_MS           2U
 
 void DisplayProtocol_Init(void);
 void DisplayProtocol_Process(void);

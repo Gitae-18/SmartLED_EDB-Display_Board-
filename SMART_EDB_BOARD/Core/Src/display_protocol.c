@@ -179,6 +179,16 @@ void DisplayProtocol_Process(void)
         return;
     }
 
+    /*
+     * Allow the gateway to release its RS485 driver and return to receive
+     * mode before this board starts a reply. Without this turnaround time,
+     * the gateway can miss the first bytes of an immediate response.
+     */
+    if (send_response)
+    {
+        HAL_Delay(DISPLAY_PROTOCOL_RESPONSE_DELAY_MS);
+    }
+
     switch (request.command)
     {
         case DISPLAY_CMD_GET_MEASUREMENTS:
